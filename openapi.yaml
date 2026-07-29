@@ -1,0 +1,160 @@
+openapi: 3.1.0
+info:
+  title: Sarwa Odyssey Local Read-Only Bridge
+  version: 0.2.1
+  description: >-
+    Unofficial localhost-only bridge. It is not affiliated with Sarwa and does
+    not expose trading, funding, withdrawal, transfer, or other write actions.
+  license:
+    name: MIT
+    identifier: MIT
+servers:
+  - url: http://127.0.0.1:3378
+security:
+  - localBearer: []
+paths:
+  /healthz:
+    get:
+      operationId: getHealth
+      summary: Check bridge health
+      security: []
+      responses:
+        "200":
+          description: Bridge is running
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [mode, ok]
+                properties:
+                  mode:
+                    const: read-only
+                  ok:
+                    const: true
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /v1/accounts:
+    get:
+      operationId: listAccounts
+      summary: List Sarwa accounts
+      responses:
+        "200":
+          $ref: "#/components/responses/UpstreamJson"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "502":
+          $ref: "#/components/responses/UpstreamError"
+  /v1/portfolio:
+    get:
+      operationId: getPortfolio
+      summary: Get the latest aggregate portfolio
+      responses:
+        "200":
+          $ref: "#/components/responses/UpstreamJson"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "502":
+          $ref: "#/components/responses/UpstreamError"
+  /v1/positions:
+    get:
+      operationId: listPositions
+      summary: List aggregate or account-specific positions
+      parameters:
+        - $ref: "#/components/parameters/RequiredAccountId"
+      responses:
+        "200":
+          $ref: "#/components/responses/UpstreamJson"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "502":
+          $ref: "#/components/responses/UpstreamError"
+  /v1/orders:
+    get:
+      operationId: listOrders
+      summary: List account orders
+      parameters:
+        - $ref: "#/components/parameters/RequiredAccountId"
+      responses:
+        "200":
+          $ref: "#/components/responses/UpstreamJson"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "502":
+          $ref: "#/components/responses/UpstreamError"
+  /v1/transactions:
+    get:
+      operationId: listTransactions
+      summary: List account transactions
+      parameters:
+        - $ref: "#/components/parameters/RequiredAccountId"
+      responses:
+        "200":
+          $ref: "#/components/responses/UpstreamJson"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "502":
+          $ref: "#/components/responses/UpstreamError"
+  /v1/market-clock:
+    get:
+      operationId: getMarketClock
+      summary: Get US market status
+      responses:
+        "200":
+          $ref: "#/components/responses/UpstreamJson"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "502":
+          $ref: "#/components/responses/UpstreamError"
+components:
+  securitySchemes:
+    localBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque
+  parameters:
+    RequiredAccountId:
+      name: account_id
+      in: query
+      required: true
+      schema:
+        type: string
+        pattern: "^[A-Za-z0-9_-]{1,128}$"
+  responses:
+    UpstreamJson:
+      description: Unmodified JSON returned by the corresponding Sarwa read endpoint
+      content:
+        application/json:
+          schema: {}
+    Unauthorized:
+      description: Missing or invalid local bearer token
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    BadRequest:
+      description: Missing or invalid input
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    UpstreamError:
+      description: Sarwa session or upstream API error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+        message:
+          type: string

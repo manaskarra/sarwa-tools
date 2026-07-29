@@ -1,0 +1,30 @@
+{
+  "name": "sarwa-cli",
+  "version": "1.0.0",
+  "description": "Unofficial read-only portfolio CLI for Sarwa Odyssey.",
+  "type": "module",
+  "bin": {
+    "sarwa": "./bin/sarwa.js"
+  },
+  "exports": "./src/index.js",
+  "files": ["bin", "src", "LICENSE", "README.md", "SECURITY.md", "CHANGELOG.md"],
+  "scripts": {
+    "check": "node --check bin/sarwa.js && node --check src/*.js",
+    "test": "node --test",
+    "verify": "npm run check && npm test",
+    "prepack": "npm run verify"
+  },
+  "engines": {
+    "node": ">=22.12"
+  },
+  "dependencies": {
+    "commander": "15.0.0",
+    "playwright-core": "1.62.0"
+  },
+  "license": "MIT",
+  "repository": {"type": "git", "url": "git+https://github.com/manaskarra/sarwa-cli.git"},
+  "homepage": "https://github.com/manaskarra/sarwa-cli#readme",
+  "bugs": {"url": "https://github.com/manaskarra/sarwa-cli/issues"},
+  "keywords": ["sarwa", "portfolio", "cli", "uae", "investing"],
+  "publishConfig": {"access": "public", "provenance": true}
+}
