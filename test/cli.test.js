@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
+import { mkdtempSync, rmSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
@@ -15,6 +18,8 @@ test("public command surface stays focused on portfolio reads", () => {
     "accounts",
     "portfolio",
     "holdings",
+    "monitor",
+    "snapshot",
     "watchlist",
     "transactions",
   ]) {
@@ -36,6 +41,58 @@ test("public command surface stays focused on portfolio reads", () => {
   }
 });
 
+test("local agent watchlist is manageable without Sarwa authentication", () => {
+  const directory = mkdtempSync(path.join(os.tmpdir(), "sarwa-cli-agent-"));
+  const env = { ...process.env, SARWA_CONFIG_DIR: directory };
+  try {
+    const added = JSON.parse(
+      execFileSync(
+        process.execPath,
+        [bin, "--compact", "watchlist", "add", "exm", "--note", "idea"],
+        { encoding: "utf8", env },
+      ),
+    );
+    assert.equal(added.agent_watchlist.changed, true);
+    assert.equal(added.agent_watchlist.item.symbol, "EXM");
+
+    const listed = JSON.parse(
+      execFileSync(
+        process.execPath,
+        [bin, "--compact", "watchlist", "list"],
+        { encoding: "utf8", env },
+      ),
+    );
+    assert.deepEqual(
+      listed.agent_watchlist.items.map((item) => item.symbol),
+      ["EXM"],
+    );
+
+    const removed = JSON.parse(
+      execFileSync(
+        process.execPath,
+        [bin, "--compact", "watchlist", "remove", "EXM"],
+        { encoding: "utf8", env },
+      ),
+    );
+    assert.equal(removed.agent_watchlist.changed, true);
+  } finally {
+    rmSync(directory, { force: true, recursive: true });
+  }
+});
+
+test("misspelled commands receive an actionable suggestion", () => {
+  const result = spawnSync(
+    process.execPath,
+    [bin, "--compact", "holdigns"],
+    { encoding: "utf8" },
+  );
+
+  assert.equal(result.status, 1);
+  const error = JSON.parse(result.stderr);
+  assert.equal(error.error.code, "USAGE");
+  assert.match(error.error.message, /Did you mean `holdings`/);
+});
+
 test("schemas are discoverable without authentication", () => {
   const result = execFileSync(
     process.execPath,
@@ -47,6 +104,17 @@ test("schemas are discoverable without authentication", () => {
   assert.equal(schema.schema_version, "1.0");
   assert.equal(schema.resource, "portfolio");
   assert.equal(schema.type, "object");
+
+  for (const resource of ["snapshot", "monitor"]) {
+    const agentSchema = JSON.parse(
+      execFileSync(
+        process.execPath,
+        [bin, "--compact", resource, "--schema"],
+        { encoding: "utf8" },
+      ),
+    );
+    assert.equal(agentSchema.resource, resource);
+  }
 });
 
 test("agent errors are structured, stable, and free of terminal controls", () => {

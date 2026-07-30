@@ -88,6 +88,96 @@ export class SarwaClient {
     );
   }
 
+  async snapshot({
+    account,
+    allTransactions = false,
+    transactionLimit = 100,
+  } = {}) {
+    this.requireSession();
+    if (
+      !Number.isSafeInteger(transactionLimit) ||
+      transactionLimit < 1 ||
+      transactionLimit > 100
+    ) {
+      throw new SarwaError(
+        "USAGE",
+        "Snapshot transaction limit must be an integer from 1 to 100.",
+        { retryable: false },
+      );
+    }
+    const accountId = await this.resolveAccount(account);
+    const transactionPath = resolveEndpoint("transactions", {
+      account: accountId,
+    });
+    const [positions, orders, portfolioResponse, transactionPages] =
+      await Promise.all([
+        fetchAllPages(
+          this.session,
+          resolveEndpoint("positions", { account: accountId }),
+          { pageSize: 200 },
+        ),
+        fetchAllPages(
+          this.session,
+          resolveEndpoint("orders", { account: accountId }),
+          { pageSize: 200 },
+        ),
+        this.session.get(
+          resolveEndpoint("accountDetails", { account: accountId }),
+        ),
+        allTransactions
+          ? fetchAllPages(this.session, transactionPath, { pageSize: 200 })
+          : fetchPage(
+              this.session,
+              withPageSize(transactionPath, Math.max(transactionLimit, 20)),
+            ),
+      ]);
+    const normalizedHoldings = buildHoldings(positions.response);
+    const overview = buildOverview({
+      ordersComplete: !orders.partial,
+      ordersResponse: orders.response,
+      portfolioResponse,
+      positionsResponse: positions.response,
+    });
+    const transactions = buildTransactions(transactionPages.response);
+    const transactionsComplete =
+      !transactionPages.partial && !transactionPages.nextCursor;
+
+    return successDocument(
+      "snapshot",
+      {
+        portfolio: buildPortfolioView(overview, normalizedHoldings),
+        holdings: sortHoldings(normalizedHoldings, "value")
+          .map(compactHolding),
+        transactions: allTransactions
+          ? transactions
+          : transactions.slice(0, transactionLimit),
+        coverage: {
+          transactions_complete: transactionsComplete,
+          transactions_has_more: Boolean(transactionPages.nextCursor),
+        },
+      },
+      {
+        partial:
+          positions.partial ||
+          orders.partial ||
+          overview.partial ||
+          Boolean(transactionPages.partial),
+        sourceAsOf: newestTimestamp(
+          positions.sourceAsOf,
+          orders.sourceAsOf,
+          transactionPages.sourceAsOf,
+          extractSourceTimestamp(portfolioResponse),
+        ),
+        warnings: unique([
+          ...positions.warnings,
+          ...orders.warnings,
+          ...(transactionPages.warnings || []),
+          ...overview.warnings,
+        ]),
+      },
+    );
+  }
+
   async holdings({
     account,
     assetClass,

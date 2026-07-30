@@ -101,6 +101,13 @@ export function browserLaunchOptions({ executablePath, headless }) {
 
 export function normalizeBrowserLaunchError(error) {
   const detail = String(error?.message || "");
+  if (/ProcessSingleton|profile.*in use/i.test(detail)) {
+    return new SarwaError(
+      "PROFILE_BUSY",
+      "Another browser is using the Sarwa session profile. Close it and retry.",
+      { cause: error, retryable: true },
+    );
+  }
   if (MANAGED_BROWSER_ERROR.test(detail)) {
     return new SarwaError(
       "BROWSER_AUTOMATION_BLOCKED",

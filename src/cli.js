@@ -7,6 +7,13 @@ import {
   login,
   logout,
 } from "./browser.js";
+import {
+  addAgentWatchlistItem,
+  listAgentWatchlist,
+  removeAgentWatchlistItem,
+  runMonitorCheck,
+} from "./agent-store.js";
+import { attachAgentWatchlist } from "./agent.js";
 import { SarwaClient } from "./client.js";
 import { VERSION } from "./constants.js";
 import { normalizeError, SarwaError } from "./errors.js";
@@ -26,6 +33,7 @@ import {
 import { schemaDocument } from "./schemas.js";
 
 export async function run(argv) {
+  validateTopLevelCommand(argv);
   const program = createProgram();
   try {
     await program.parseAsync(argv);
@@ -65,7 +73,7 @@ function createProgram() {
     .option("--compact", "print one-line JSON")
     .option("--table", "force concise human-readable tables")
     .option("--quiet", "suppress non-essential warnings")
-    .showSuggestionAfterError(false)
+    .showSuggestionAfterError(true)
     .exitOverride()
     .configureOutput({
       outputError: () => {},
@@ -164,9 +172,9 @@ function createProgram() {
     .option("--schema", "print the response schema without authentication")
     .action(showTransactions);
 
-  program
+  const watchlist = program
     .command("watchlist")
-    .description("Show a Sarwa-curated market list")
+    .description("Show Sarwa market lists or manage the local agent watchlist")
     .addOption(
       new Option("--name <name>", "curated list")
         .choices(["most-popular", "top-movers"])
@@ -179,6 +187,58 @@ function createProgram() {
     )
     .option("--schema", "print the response schema without authentication")
     .action(showWatchlist);
+
+  watchlist
+    .command("list")
+    .description("List locally tracked symbols")
+    .option("--schema", "print the response schema without authentication")
+    .action(showAgentWatchlist);
+
+  watchlist
+    .command("add")
+    .description("Add or update a locally tracked symbol")
+    .argument("<symbol>", "symbol to track")
+    .option("--note <text>", "optional agent context (maximum 500 characters)")
+    .option("--schema", "print the response schema without authentication")
+    .action(addToAgentWatchlist);
+
+  watchlist
+    .command("remove")
+    .description("Remove a locally tracked symbol")
+    .argument("<symbol>", "symbol to stop tracking")
+    .option("--schema", "print the response schema without authentication")
+    .action(removeFromAgentWatchlist);
+
+  program
+    .command("snapshot")
+    .description("Fetch one agent-ready portfolio snapshot")
+    .option(
+      "-a, --account <id>",
+      "Trade account id (needed only for multiple accounts)",
+    )
+    .addOption(
+      new Option(
+        "--transactions <number>",
+        "recent transaction rows to include",
+      )
+        .default(100)
+        .argParser(asRowLimit),
+    )
+    .option("--all-transactions", "include complete available activity history")
+    .option("--schema", "print the response schema without authentication")
+    .action(showSnapshot);
+
+  program
+    .command("monitor")
+    .description("Detect portfolio and local watchlist changes since the last run")
+    .option(
+      "-a, --account <id>",
+      "Trade account id (needed only for multiple accounts)",
+    )
+    .option("--once", "run one check and exit (the default behavior)")
+    .option("--reset", "replace the comparison baseline without emitting events")
+    .option("--schema", "print the response schema without authentication")
+    .action(showMonitor);
 
   return program;
 }
@@ -347,6 +407,142 @@ async function showWatchlist(options, command) {
   emitWarnings(document, command);
 }
 
+async function showAgentWatchlist(options, command) {
+  if (maybePrintSchema(options, command, "agent_watchlist")) {
+    return;
+  }
+  const state = await listAgentWatchlist();
+  const document = successDocument("agent_watchlist", {
+    action: "list",
+    changed: false,
+    items: state.items,
+    updated_at: state.updated_at,
+  });
+  if (wantsJson(command)) {
+    printStructured(document, command);
+    return;
+  }
+  printAgentWatchlist(document.agent_watchlist.items);
+}
+
+async function addToAgentWatchlist(symbol, options, command) {
+  if (maybePrintSchema(options, command, "agent_watchlist")) {
+    return;
+  }
+  const result = await addAgentWatchlistItem(symbol, { note: options.note });
+  const document = successDocument("agent_watchlist", {
+    action: "add",
+    ...result,
+  });
+  if (wantsJson(command)) {
+    printStructured(document, command);
+    return;
+  }
+  process.stdout.write(
+    result.changed
+      ? `${result.item.symbol} saved to the local agent watchlist.\n`
+      : `${result.item.symbol} is already on the local agent watchlist.\n`,
+  );
+}
+
+async function removeFromAgentWatchlist(symbol, options, command) {
+  if (maybePrintSchema(options, command, "agent_watchlist")) {
+    return;
+  }
+  const result = await removeAgentWatchlistItem(symbol);
+  const document = successDocument("agent_watchlist", {
+    action: "remove",
+    ...result,
+  });
+  if (wantsJson(command)) {
+    printStructured(document, command);
+    return;
+  }
+  process.stdout.write(
+    result.changed
+      ? `${result.symbol} removed from the local agent watchlist.\n`
+      : `${result.symbol} was not on the local agent watchlist.\n`,
+  );
+}
+
+async function showSnapshot(options, command) {
+  if (maybePrintSchema(options, command, "snapshot")) {
+    return;
+  }
+  const document = await loadAgentSnapshot({
+    account: options.account,
+    allTransactions: options.allTransactions,
+    transactionLimit: options.transactions,
+  });
+  if (wantsJson(command)) {
+    printStructured(document, command);
+    return;
+  }
+  printAgentSnapshot(document.snapshot);
+  emitWarnings(document, command);
+}
+
+async function showMonitor(options, command) {
+  if (maybePrintSchema(options, command, "monitor")) {
+    return;
+  }
+  const snapshotDocument = await loadAgentSnapshot({
+    account: options.account,
+    allTransactions: true,
+  });
+  const result = await runMonitorCheck(snapshotDocument, {
+    reset: options.reset,
+  });
+  const warnings = [...snapshotDocument.warnings];
+  if (!result.state_updated) {
+    warnings.push(
+      "Monitor baseline was not updated because the Sarwa snapshot was partial.",
+    );
+  }
+  const snapshot = snapshotDocument.snapshot;
+  const document = successDocument(
+    "monitor",
+    {
+      ...result,
+      current: {
+        coverage: snapshot.coverage,
+        holdings_count: snapshot.holdings.length,
+        portfolio: snapshot.portfolio,
+        transactions_count: snapshot.transactions.length,
+        watchlist_count: snapshot.agent_watchlist.length,
+      },
+    },
+    {
+      fetchedAt: snapshotDocument.fetched_at,
+      partial: snapshotDocument.partial,
+      sourceAsOf: snapshotDocument.source_as_of,
+      warnings,
+    },
+  );
+  if (wantsJson(command)) {
+    printStructured(document, command);
+    return;
+  }
+  printMonitor(document.monitor);
+  emitWarnings(document, command);
+}
+
+async function loadAgentSnapshot({
+  account,
+  allTransactions = false,
+  transactionLimit = 100,
+} = {}) {
+  const watchlist = await listAgentWatchlist();
+  const document = await withClient((client) =>
+    client.snapshot({
+      account,
+      allTransactions,
+      transactionLimit,
+    }),
+  );
+  return attachAgentWatchlist(document, watchlist.items);
+}
+
 async function withClient(callback) {
   const client = await SarwaClient.connect();
   try {
@@ -479,6 +675,102 @@ function printTransactions(transactions) {
   printTable(transactions.map(transactionRow));
 }
 
+function printAgentWatchlist(items) {
+  printTable(
+    items.map((item) => ({
+      symbol: item.symbol,
+      note: item.note || "—",
+      added: formatDate(item.added_at),
+    })),
+  );
+}
+
+function printAgentSnapshot(snapshot) {
+  printPortfolio(snapshot.portfolio);
+  printSection("Snapshot", [
+    { metric: "Holdings", value: snapshot.holdings.length },
+    { metric: "Transactions", value: snapshot.transactions.length },
+    {
+      metric: "Transaction history",
+      value: snapshot.coverage.transactions_complete ? "complete" : "partial",
+    },
+    { metric: "Agent watchlist", value: snapshot.agent_watchlist.length },
+  ]);
+  printSection(
+    "Agent watchlist",
+    snapshot.agent_watchlist.map((item) => ({
+      symbol: item.symbol,
+      held: item.is_held ? "yes" : "no",
+      note: item.note || "—",
+    })),
+  );
+}
+
+function printMonitor(monitor) {
+  let status = monitor.changed ? "changes detected" : "no changes";
+  if (monitor.reset) {
+    status = "baseline reset";
+  } else if (!monitor.baseline_at) {
+    status = "snapshot incomplete; baseline not created";
+  } else if (
+    monitor.state_updated &&
+    monitor.baseline_at === monitor.observed_at
+  ) {
+    status = "baseline created";
+  }
+  const currency = monitor.current.portfolio.currency;
+  printSection("Monitor", [
+    { metric: "Status", value: status },
+    { metric: "Observed", value: monitor.observed_at },
+    { metric: "Baseline", value: monitor.baseline_at || "—" },
+    {
+      metric: "Portfolio value change",
+      value: formatMoney(monitor.portfolio_delta.value, currency),
+    },
+    {
+      metric: "Total P&L change",
+      value: formatMoney(monitor.portfolio_delta.total_pnl, currency),
+    },
+    {
+      metric: "Cash change",
+      value: formatMoney(monitor.portfolio_delta.cash, currency),
+    },
+  ]);
+  printSection(
+    "Events",
+    monitor.events.map((item) => ({
+      type: item.type,
+      symbol:
+        item.symbol ||
+        item.holding?.symbol ||
+        item.transaction?.symbol ||
+        "—",
+      detail: monitorEventDetail(item),
+    })),
+  );
+}
+
+function monitorEventDetail(item) {
+  if (item.type === "position_quantity_changed") {
+    return `${formatNumber(item.before_quantity)} → ${formatNumber(item.after_quantity)}`;
+  }
+  if (item.type === "position_opened" || item.type === "position_closed") {
+    return `quantity ${formatNumber(item.holding?.quantity)}`;
+  }
+  if (item.type === "transaction_added") {
+    const transaction = item.transaction;
+    return [
+      formatDate(transaction?.date),
+      transaction?.type,
+      transaction?.side,
+      formatNumber(transaction?.quantity),
+    ]
+      .filter((value) => value && value !== "—")
+      .join(" · ");
+  }
+  return item.type === "watchlist_added" ? "tracking started" : "tracking stopped";
+}
+
 function transactionRow(transaction) {
   return {
     date: formatDate(transaction.date),
@@ -551,4 +843,56 @@ function formatDate(value) {
     return "—";
   }
   return value.slice(0, 10);
+}
+
+const TOP_LEVEL_COMMANDS = [
+  "accounts",
+  "auth",
+  "holdings",
+  "monitor",
+  "portfolio",
+  "snapshot",
+  "transactions",
+  "watchlist",
+];
+
+function validateTopLevelCommand(argv) {
+  const candidate = argv.slice(2).find((value) => !value.startsWith("-"));
+  if (!candidate || TOP_LEVEL_COMMANDS.includes(candidate)) {
+    return;
+  }
+  const suggestion = [...TOP_LEVEL_COMMANDS]
+    .map((command) => ({
+      command,
+      distance: editDistance(candidate.toLowerCase(), command),
+    }))
+    .sort((left, right) => left.distance - right.distance)[0];
+  const hint =
+    suggestion && suggestion.distance <= 3
+      ? ` Did you mean \`${suggestion.command}\`?`
+      : "";
+  throw new SarwaError(
+    "USAGE",
+    `Unknown command \`${candidate}\`.${hint}`,
+    { retryable: false },
+  );
+}
+
+function editDistance(left, right) {
+  const row = Array.from({ length: right.length + 1 }, (_, index) => index);
+  for (let leftIndex = 1; leftIndex <= left.length; leftIndex += 1) {
+    let diagonal = row[0];
+    row[0] = leftIndex;
+    for (let rightIndex = 1; rightIndex <= right.length; rightIndex += 1) {
+      const above = row[rightIndex];
+      row[rightIndex] = Math.min(
+        row[rightIndex] + 1,
+        row[rightIndex - 1] + 1,
+        diagonal +
+          (left[leftIndex - 1] === right[rightIndex - 1] ? 0 : 1),
+      );
+      diagonal = above;
+    }
+  }
+  return row[right.length];
 }
