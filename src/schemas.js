@@ -9,6 +9,19 @@ const BASE_PROPERTIES = {
   warnings: { type: "array", items: { type: "string" } },
 };
 
+const AGENT_WATCHLIST_ITEM_SCHEMA = {
+  type: "object",
+  required: ["symbol", "note", "added_at", "updated_at"],
+  properties: {
+    symbol: { type: "string" },
+    note: { type: ["string", "null"] },
+    added_at: { type: "string", format: "date-time" },
+    updated_at: { type: "string", format: "date-time" },
+    is_held: { type: "boolean" },
+    holding: { type: ["object", "null"] },
+  },
+};
+
 const RESOURCE_SCHEMAS = Object.freeze({
   accounts: {
     type: "array",
@@ -70,6 +83,71 @@ const RESOURCE_SCHEMAS = Object.freeze({
   watchlist: {
     type: "object",
     required: ["name", "assets"],
+  },
+  agent_watchlist: {
+    type: "object",
+    required: ["action", "changed", "items", "updated_at"],
+    properties: {
+      action: { enum: ["add", "list", "remove"] },
+      changed: { type: "boolean" },
+      item: AGENT_WATCHLIST_ITEM_SCHEMA,
+      items: {
+        type: "array",
+        items: AGENT_WATCHLIST_ITEM_SCHEMA,
+      },
+      symbol: { type: "string" },
+      updated_at: { type: ["string", "null"], format: "date-time" },
+    },
+  },
+  snapshot: {
+    type: "object",
+    required: [
+      "portfolio",
+      "holdings",
+      "transactions",
+      "coverage",
+      "agent_watchlist",
+    ],
+    properties: {
+      portfolio: { type: "object" },
+      holdings: { type: "array" },
+      transactions: { type: "array" },
+      coverage: {
+        type: "object",
+        required: ["transactions_complete", "transactions_has_more"],
+      },
+      agent_watchlist: {
+        type: "array",
+        items: AGENT_WATCHLIST_ITEM_SCHEMA,
+      },
+    },
+  },
+  monitor: {
+    type: "object",
+    required: [
+      "baseline_at",
+      "changed",
+      "current",
+      "events",
+      "initialized",
+      "observed_at",
+      "portfolio_delta",
+      "reset",
+      "stale_observation",
+      "state_updated",
+    ],
+    properties: {
+      baseline_at: { type: ["string", "null"], format: "date-time" },
+      changed: { type: "boolean" },
+      current: { type: "object" },
+      events: { type: "array", items: { type: "object" } },
+      initialized: { type: "boolean" },
+      observed_at: { type: "string", format: "date-time" },
+      portfolio_delta: { type: "object" },
+      reset: { type: "boolean" },
+      stale_observation: { type: "boolean" },
+      state_updated: { type: "boolean" },
+    },
   },
   auth_status: {
     type: "object",

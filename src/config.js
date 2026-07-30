@@ -1,9 +1,12 @@
+import { randomUUID } from "node:crypto";
 import {
   chmod,
   mkdir,
   readFile,
+  rename,
   rm,
   stat,
+  unlink,
   writeFile,
 } from "node:fs/promises";
 import os from "node:os";
@@ -33,7 +36,10 @@ export function platformConfigRoot(env = process.env) {
 export function configPaths(env = process.env) {
   const root = platformConfigRoot(env);
   return {
+    agentStateLock: path.join(root, "agent-state.lock"),
+    agentWatchlist: path.join(root, "agent-watchlist.json"),
     lock: path.join(root, "browser.lock"),
+    monitorState: path.join(root, "monitor-state.json"),
     profile: path.join(root, "browser-profile"),
     profileMarker: path.join(root, "secure-profile.json"),
     root,
@@ -52,6 +58,23 @@ export async function writePrivateJson(file, value) {
     mode: 0o600,
   });
   await chmod(file, 0o600).catch(() => {});
+}
+
+export async function writePrivateJsonAtomic(file, value) {
+  await ensurePrivateDirectory(path.dirname(file));
+  const temporary = `${file}.${process.pid}.${randomUUID()}.tmp`;
+  try {
+    await writeFile(temporary, `${JSON.stringify(value, null, 2)}\n`, {
+      encoding: "utf8",
+      mode: 0o600,
+    });
+    await chmod(temporary, 0o600).catch(() => {});
+    await rename(temporary, file);
+    await chmod(file, 0o600).catch(() => {});
+  } catch (error) {
+    await unlink(temporary).catch(() => {});
+    throw error;
+  }
 }
 
 export async function readJson(file) {

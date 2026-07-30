@@ -44,21 +44,43 @@ const CHROME_CANDIDATES = {
 
 const RETRYABLE_STATUSES = new Set([429, 500, 502, 503, 504]);
 const MAX_GET_ATTEMPTS = 3;
+const BROWSER_LAUNCH_TIMEOUT_MS = 15_000;
+const MANAGED_BROWSER_ERROR =
+  /DevTools remote debugging is disallowed|remote debugging.+(?:administrator|admin|policy)|developer tools.+(?:administrator|admin|policy)/i;
 
 export async function findBrowserExecutable(env = process.env) {
-  if (env.SARWA_BROWSER_EXECUTABLE) {
-    await access(env.SARWA_BROWSER_EXECUTABLE);
-    return env.SARWA_BROWSER_EXECUTABLE;
-  }
-  for (const candidate of CHROME_CANDIDATES[process.platform] || []) {
+  for (const candidate of browserExecutableCandidates(env)) {
     try {
       await access(candidate);
       return candidate;
-    } catch {
+    } catch (error) {
+      if (env.SARWA_BROWSER_EXECUTABLE) {
+        throw new SarwaError(
+          "BROWSER_NOT_FOUND",
+          "SARWA_BROWSER_EXECUTABLE does not point to an accessible browser executable.",
+          { cause: error, retryable: false },
+        );
+      }
       // Try the next supported system browser.
     }
   }
   return null;
+}
+
+export function browserExecutableCandidates(
+  env = process.env,
+  {
+    platform = process.platform,
+    playwrightExecutable = chromium.executablePath(),
+  } = {},
+) {
+  if (env.SARWA_BROWSER_EXECUTABLE) {
+    return [env.SARWA_BROWSER_EXECUTABLE];
+  }
+  return uniquePaths([
+    playwrightExecutable,
+    ...(CHROME_CANDIDATES[platform] || []),
+  ]);
 }
 
 export function browserLaunchOptions({ executablePath, headless }) {
@@ -72,8 +94,39 @@ export function browserLaunchOptions({ executablePath, headless }) {
       "--use-mock-keychain",
     ],
     serviceWorkers: "allow",
+    timeout: BROWSER_LAUNCH_TIMEOUT_MS,
     viewport: { height: 900, width: 1440 },
   };
+}
+
+export function normalizeBrowserLaunchError(error) {
+  const detail = String(error?.message || "");
+  if (/ProcessSingleton|profile.*in use/i.test(detail)) {
+    return new SarwaError(
+      "PROFILE_BUSY",
+      "Another browser is using the Sarwa session profile. Close it and retry.",
+      { cause: error, retryable: true },
+    );
+  }
+  if (MANAGED_BROWSER_ERROR.test(detail)) {
+    return new SarwaError(
+      "BROWSER_AUTOMATION_BLOCKED",
+      "Browser automation is blocked by an administrator policy. Install a compatible browser with `npx playwright-core@1.62.0 install chromium`, then retry, or set SARWA_BROWSER_EXECUTABLE to an unmanaged Chromium executable.",
+      { cause: error, retryable: false },
+    );
+  }
+  if (/timed? ?out|timeout/i.test(detail)) {
+    return new SarwaError(
+      "BROWSER_LAUNCH_TIMEOUT",
+      "Browser startup timed out. Managed Chrome installations may block automation. Install a compatible browser with `npx playwright-core@1.62.0 install chromium`, then retry.",
+      { cause: error, retryable: true },
+    );
+  }
+  return new SarwaError(
+    "BROWSER_LAUNCH_FAILED",
+    "The supported browser could not be started. Set SARWA_BROWSER_EXECUTABLE to an unmanaged Chrome, Edge, or Chromium executable.",
+    { cause: error, retryable: false },
+  );
 }
 
 export class SarwaBrowserSession {
@@ -137,13 +190,17 @@ export class SarwaBrowserSession {
         );
       }
 
-      this.context = await chromium.launchPersistentContext(
-        this.profileDirectory,
-        browserLaunchOptions({
-          executablePath,
-          headless: this.headless,
-        }),
-      );
+      try {
+        this.context = await chromium.launchPersistentContext(
+          this.profileDirectory,
+          browserLaunchOptions({
+            executablePath,
+            headless: this.headless,
+          }),
+        );
+      } catch (error) {
+        throw normalizeBrowserLaunchError(error);
+      }
       this.context.on("response", (response) => this.observeResponse(response));
       this.page = this.context.pages()[0] || (await this.context.newPage());
       if (navigate && this.page.url() !== this.webUrl) {
@@ -451,4 +508,8 @@ function retryDelayMs(response, attempt) {
 
 function delay(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+function uniquePaths(paths) {
+  return [...new Set(paths.filter(Boolean).map((value) => path.resolve(value)))];
 }
