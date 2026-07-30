@@ -3,7 +3,9 @@ import test from "node:test";
 
 import {
   SarwaBrowserSession,
+  browserExecutableCandidates,
   browserLaunchOptions,
+  normalizeBrowserLaunchError,
 } from "../src/browser.js";
 
 function response({ authorization = "JWT token", status = 200 } = {}) {
@@ -47,4 +49,43 @@ test("authenticated browser launch is sandboxed and uses the OS credential store
     "--use-mock-keychain",
   ]);
   assert.equal(options.acceptDownloads, false);
+  assert.equal(options.timeout, 15_000);
+});
+
+test("an installed Playwright browser is preferred over managed system Chrome", () => {
+  assert.deepEqual(
+    browserExecutableCandidates(
+      {},
+      {
+        platform: "darwin",
+        playwrightExecutable: "/cache/Chrome for Testing",
+      },
+    ).slice(0, 2),
+    [
+      "/cache/Chrome for Testing",
+      "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+    ],
+  );
+
+  assert.deepEqual(
+    browserExecutableCandidates({
+      SARWA_BROWSER_EXECUTABLE: "/custom/chromium",
+    }),
+    ["/custom/chromium"],
+  );
+});
+
+test("managed-browser and launch-timeout failures are actionable", () => {
+  const managed = normalizeBrowserLaunchError(
+    new Error("DevTools remote debugging is disallowed by the system admin."),
+  );
+  assert.equal(managed.code, "BROWSER_AUTOMATION_BLOCKED");
+  assert.equal(managed.retryable, false);
+  assert.match(managed.message, /playwright-core@1\.62\.0 install chromium/);
+
+  const timeout = normalizeBrowserLaunchError(
+    new Error("browserType.launchPersistentContext: Timeout 15000ms exceeded."),
+  );
+  assert.equal(timeout.code, "BROWSER_LAUNCH_TIMEOUT");
+  assert.equal(timeout.retryable, true);
 });

@@ -22,6 +22,17 @@ reads, prints, or stores your password. The browser keeps the Sarwa session and
 refreshes short-lived authorization automatically; run `sarwa auth login` again only
 if Sarwa expires the browser session.
 
+If a managed Chrome installation blocks browser automation, install Playwright's
+compatible Chrome for Testing build. The CLI detects it automatically:
+
+```bash
+npx playwright-core@1.62.0 install chromium
+sarwa auth status
+```
+
+You can instead set `SARWA_BROWSER_EXECUTABLE` to the absolute path of an
+unmanaged Chrome, Edge, or Chromium executable.
+
 ## Commands
 
 ```bash
@@ -66,9 +77,10 @@ sarwa --json portfolio
 sarwa --compact holdings
 ```
 
-Every machine response uses a stable `schema_version`, `ok`, `resource`,
-`data`, `meta`, and `warnings` envelope. Errors use the same envelope and exit
-with 1 (request/data error) or 2 (authentication required).
+Successful machine responses include stable `schema_version`, `fetched_at`,
+`source_as_of`, `partial`, and `warnings` fields plus a resource-specific field
+such as `portfolio` or `holdings`. Errors include `schema_version` and `error`,
+and exit with 1 (request/data error) or 2 (authentication required).
 
 ## Metric meanings
 
