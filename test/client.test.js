@@ -90,3 +90,24 @@ test("snapshot resolves one account and returns one coherent agent document", as
   );
   assert.equal(seen.length, 5);
 });
+
+test("transaction date filters fail closed before reading account data", async () => {
+  let reads = 0;
+  const client = new SarwaClient({
+    session: {
+      get: async () => {
+        reads += 1;
+        return [];
+      },
+    },
+  });
+
+  await assert.rejects(
+    () => client.transactions({ from: "2026-02-30" }),
+    {
+      code: "USAGE",
+      message: "Invalid calendar date: 2026-02-30.",
+    },
+  );
+  assert.equal(reads, 0);
+});

@@ -18,7 +18,12 @@ import {
   SARWA_API_ORIGIN,
   SARWA_WEB_URL,
 } from "./constants.js";
-import { authError, SarwaError } from "./errors.js";
+import {
+  authError,
+  cancellationError,
+  SarwaError,
+  throwIfAborted,
+} from "./errors.js";
 import { acquireProfileLock } from "./lock.js";
 import { assertReadOnlyPath } from "./security.js";
 
@@ -137,6 +142,7 @@ export class SarwaBrowserSession {
     lockTimeoutMs = 60_000,
     profileDirectory = configPaths().profile,
     resetLegacyProfile = false,
+    signal,
     webUrl = SARWA_WEB_URL,
   } = {}) {
     this.authHeader = null;
@@ -161,14 +167,18 @@ export class SarwaBrowserSession {
       root: path.dirname(profileDirectory),
     };
     this.resetLegacyProfile = resetLegacyProfile;
+    this.signal = signal;
     this.webUrl = webUrl;
   }
 
   async open({ navigate = true } = {}) {
+    throwIfAborted(this.signal);
     this.lock = await acquireProfileLock(this.lockPath, {
+      signal: this.signal,
       timeoutMs: this.lockTimeoutMs,
     });
     try {
+      throwIfAborted(this.signal);
       await ensurePrivateDirectory(this.profilePaths.root);
       const prepared = await prepareSecureProfile({
         paths: this.profilePaths,
@@ -201,6 +211,7 @@ export class SarwaBrowserSession {
       } catch (error) {
         throw normalizeBrowserLaunchError(error);
       }
+      throwIfAborted(this.signal);
       this.context.on("response", (response) => this.observeResponse(response));
       this.page = this.context.pages()[0] || (await this.context.newPage());
       if (navigate && this.page.url() !== this.webUrl) {
@@ -211,6 +222,9 @@ export class SarwaBrowserSession {
       }
       return this;
     } catch (error) {
+      await this.context?.close().catch(() => {});
+      this.context = null;
+      this.page = null;
       await this.releaseLock();
       if (/ProcessSingleton|profile.*in use/i.test(error?.message || "")) {
         throw new SarwaError(
@@ -248,12 +262,17 @@ export class SarwaBrowserSession {
     this.authWaiters.clear();
   }
 
-  async waitForAuthentication(timeoutMs = this.authTimeoutMs) {
+  async waitForAuthentication(
+    timeoutMs = this.authTimeoutMs,
+    signal = this.signal,
+  ) {
+    throwIfAborted(signal);
     if (this.authHeader) {
       return this.authHeader;
     }
     let timeout;
     let waiter;
+    let onAbort;
     try {
       return await Promise.race([
         new Promise((resolve) => {
@@ -271,9 +290,19 @@ export class SarwaBrowserSession {
             );
           }, timeoutMs);
         }),
+        new Promise((_, reject) => {
+          if (!signal) {
+            return;
+          }
+          onAbort = () => reject(cancellationError());
+          signal.addEventListener("abort", onAbort, { once: true });
+        }),
       ]);
     } finally {
       clearTimeout(timeout);
+      if (onAbort) {
+        signal.removeEventListener("abort", onAbort);
+      }
       if (waiter) {
         this.authWaiters.delete(waiter);
       }
@@ -375,7 +404,7 @@ export async function login({ timeoutSeconds = 600 } = {}) {
   }
 }
 
-export async function authenticationStatus() {
+export async function authenticationStatus({ signal } = {}) {
   const paths = configPaths();
   const state = await secureProfileState(paths);
   if (state !== "secure") {
@@ -387,6 +416,7 @@ export async function authenticationStatus() {
   const session = new SarwaBrowserSession({
     authTimeoutMs: 10_000,
     headless: true,
+    signal,
   });
   try {
     await session.open();

@@ -14,7 +14,7 @@ import {
 } from "./accounts.js";
 import { SarwaBrowserSession } from "./browser.js";
 import { resolveEndpoint } from "./endpoints.js";
-import { SarwaError } from "./errors.js";
+import { SarwaError, throwIfAborted } from "./errors.js";
 import {
   decodeCursor,
   extractSourceTimestamp,
@@ -22,6 +22,7 @@ import {
   fetchPage,
 } from "./pagination.js";
 import { successDocument } from "./output.js";
+import { asDate } from "./validation.js";
 
 export class SarwaClient {
   constructor({ session } = {}) {
@@ -29,9 +30,13 @@ export class SarwaClient {
   }
 
   static async connect(options = {}) {
-    const session = await new SarwaBrowserSession(options).open();
+    throwIfAborted(options.signal);
+    const session = new SarwaBrowserSession(options);
     try {
+      await session.open();
+      throwIfAborted(options.signal);
       await session.waitForAuthentication(options.authTimeoutMs);
+      throwIfAborted(options.signal);
       return new SarwaClient({ session });
     } catch (error) {
       await session.close();
@@ -157,6 +162,7 @@ export class SarwaClient {
         },
       },
       {
+        account_id: accountId,
         partial:
           positions.partial ||
           orders.partial ||
@@ -272,9 +278,11 @@ export class SarwaClient {
     to,
   } = {}) {
     this.requireSession();
+    const fromValue = from ? asDate(from) : null;
+    const toValue = to ? asDate(to) : null;
     const accountId = await this.resolveAccount(account);
     const endpoint = resolveEndpoint("transactions", { account: accountId });
-    const mustReadHistory = all || Boolean(from) || Boolean(to);
+    const mustReadHistory = all || Boolean(fromValue) || Boolean(toValue);
     let pageResult;
 
     if (cursor && mustReadHistory) {
@@ -307,15 +315,15 @@ export class SarwaClient {
         (transaction) => normalizeSymbol(transaction.symbol) === normalized,
       );
     }
-    if (from) {
-      const fromTime = Date.parse(from);
+    if (fromValue) {
+      const fromTime = Date.parse(fromValue);
       transactions = transactions.filter(
         (transaction) =>
           transaction.date && Date.parse(transaction.date) >= fromTime,
       );
     }
-    if (to) {
-      const toTime = endOfRange(to);
+    if (toValue) {
+      const toTime = endOfRange(toValue);
       transactions = transactions.filter(
         (transaction) =>
           transaction.date && Date.parse(transaction.date) <= toTime,

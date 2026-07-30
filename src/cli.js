@@ -11,9 +11,11 @@ import {
   addAgentWatchlistItem,
   listAgentWatchlist,
   removeAgentWatchlistItem,
-  runMonitorCheck,
 } from "./agent-store.js";
-import { attachAgentWatchlist } from "./agent.js";
+import {
+  checkAgentMonitor,
+  loadAgentSnapshot,
+} from "./agent-service.js";
 import { SarwaClient } from "./client.js";
 import { VERSION } from "./constants.js";
 import { normalizeError, SarwaError } from "./errors.js";
@@ -31,6 +33,7 @@ import {
   successDocument,
 } from "./output.js";
 import { schemaDocument } from "./schemas.js";
+import { asDate } from "./validation.js";
 
 export async function run(argv) {
   validateTopLevelCommand(argv);
@@ -469,11 +472,13 @@ async function showSnapshot(options, command) {
   if (maybePrintSchema(options, command, "snapshot")) {
     return;
   }
-  const document = await loadAgentSnapshot({
-    account: options.account,
-    allTransactions: options.allTransactions,
-    transactionLimit: options.transactions,
-  });
+  const document = await withClient((client) =>
+    loadAgentSnapshot(client, {
+      account: options.account,
+      allTransactions: options.allTransactions,
+      transactionLimit: options.transactions,
+    }),
+  );
   if (wantsJson(command)) {
     printStructured(document, command);
     return;
@@ -486,40 +491,11 @@ async function showMonitor(options, command) {
   if (maybePrintSchema(options, command, "monitor")) {
     return;
   }
-  const snapshotDocument = await loadAgentSnapshot({
-    account: options.account,
-    allTransactions: true,
-  });
-  const result = await runMonitorCheck(snapshotDocument, {
-    reset: options.reset,
-  });
-  const warnings = [...snapshotDocument.warnings];
-  if (!result.state_updated) {
-    warnings.push(
-      result.stale_observation
-        ? "Monitor baseline was not updated because the same or a newer observation is already stored."
-        : "Monitor baseline was not updated because the Sarwa snapshot was partial.",
-    );
-  }
-  const snapshot = snapshotDocument.snapshot;
-  const document = successDocument(
-    "monitor",
-    {
-      ...result,
-      current: {
-        coverage: snapshot.coverage,
-        holdings_count: snapshot.holdings.length,
-        portfolio: snapshot.portfolio,
-        transactions_count: snapshot.transactions.length,
-        watchlist_count: snapshot.agent_watchlist.length,
-      },
-    },
-    {
-      fetchedAt: snapshotDocument.fetched_at,
-      partial: snapshotDocument.partial,
-      sourceAsOf: snapshotDocument.source_as_of,
-      warnings,
-    },
+  const document = await withClient((client) =>
+    checkAgentMonitor(client, {
+      account: options.account,
+      reset: options.reset,
+    }),
   );
   if (wantsJson(command)) {
     printStructured(document, command);
@@ -527,22 +503,6 @@ async function showMonitor(options, command) {
   }
   printMonitor(document.monitor);
   emitWarnings(document, command);
-}
-
-async function loadAgentSnapshot({
-  account,
-  allTransactions = false,
-  transactionLimit = 100,
-} = {}) {
-  const watchlist = await listAgentWatchlist();
-  const document = await withClient((client) =>
-    client.snapshot({
-      account,
-      allTransactions,
-      transactionLimit,
-    }),
-  );
-  return attachAgentWatchlist(document, watchlist.items);
 }
 
 async function withClient(callback) {
@@ -816,31 +776,6 @@ function asRowLimit(value) {
     });
   }
   return parsed;
-}
-
-function asDate(value) {
-  if (
-    !/^\d{4}-\d{2}-\d{2}$/.test(value) &&
-    Number.isNaN(Date.parse(value))
-  ) {
-    throw new SarwaError(
-      "USAGE",
-      `Invalid date: ${value}. Use YYYY-MM-DD or ISO 8601.`,
-      { retryable: false },
-    );
-  }
-  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    const normalized = new Date(`${value}T00:00:00.000Z`);
-    if (
-      Number.isNaN(normalized.getTime()) ||
-      normalized.toISOString().slice(0, 10) !== value
-    ) {
-      throw new SarwaError("USAGE", `Invalid calendar date: ${value}.`, {
-        retryable: false,
-      });
-    }
-  }
-  return value;
 }
 
 function formatDate(value) {
