@@ -14,7 +14,7 @@ raw-request, embedded LLM, or debug commands.
 Requires Node.js 22.12+ and Chrome, Edge, or Chromium.
 
 ```bash
-npm install -g github:manaskarra/sarwa-cli
+npm install -g sarwa-cli
 sarwa auth login
 ```
 
@@ -76,6 +76,43 @@ directory with user-only permissions.
 If more than one open Trade account exists, the CLI reports the available IDs;
 select one with `--account ID`.
 
+## MCP server
+
+The package includes a local stdio MCP server for agents. It uses the same
+secure browser session and deterministic portfolio documents as the CLI; it
+does not contain or configure an LLM.
+
+Authenticate once outside MCP:
+
+```bash
+sarwa auth login
+```
+
+Then configure an MCP host to launch `sarwa-mcp`:
+
+```json
+{
+  "mcpServers": {
+    "sarwa": {
+      "command": "sarwa-mcp"
+    }
+  }
+}
+```
+
+The server exposes tools for authentication status, accounts, portfolio,
+holdings, holding detail, transactions, Sarwa-curated market lists, the private
+agent watchlist, snapshots, monitor checks, and an explicit destructive monitor
+reset. It intentionally exposes no login, logout, trading, funding, raw-request,
+or LLM tools.
+
+Each authenticated tool call owns and closes its browser session, so a
+long-running MCP host does not retain the browser-profile lock between calls.
+MCP calls are serialized inside the server to keep local profile and monitor
+state deterministic. Programmatic Node consumers can import MCP construction
+from `sarwa-cli/mcp`; the default `sarwa-cli` export remains independent of the
+MCP SDK.
+
 ## Agent output
 
 Output is automatically structured JSON when piped or captured:
@@ -115,10 +152,12 @@ Use `sarwa snapshot --all-transactions` when the caller needs the complete
 available activity history.
 
 `monitor --once` compares the latest complete snapshot with the previous
-successful run. It emits deterministic events for newly opened or closed
-positions, quantity changes, new transactions, and local watchlist additions or
-removals. Portfolio value, P&L, and cash changes are included as numeric deltas
-without creating noisy events.
+successful run for the same Trade account. Account IDs are hashed into private,
+account-scoped baseline filenames, so monitoring multiple accounts cannot
+compare or overwrite unrelated portfolios. It emits deterministic events for
+newly opened or closed positions, quantity changes, new transactions, and local
+watchlist additions or removals. Portfolio value, P&L, and cash changes are
+included as numeric deltas without creating noisy events.
 
 Each event ID is scoped to the observation that produced it, so repeated real
 transitions remain distinct while replaying the same observation remains
@@ -129,6 +168,8 @@ baseline.
 The first complete run creates a baseline and intentionally emits no historical
 events. A partial or incomplete Sarwa read never advances that baseline. Use
 `sarwa monitor --reset` to deliberately replace it without emitting events.
+Version 1.1.0 introduces account-scoped baseline files, so the first monitor run
+per account after upgrading initializes a new baseline.
 
 The CLI does not call or configure an LLM. An external agent such as Hermes can
 schedule `sarwa --compact monitor --once`, parse the versioned JSON, and perform
@@ -146,9 +187,11 @@ its own analysis or notification logic.
 
 ## Safety
 
-All Sarwa requests are authenticated `GET` requests. The CLI has no buy, sell,
-cancel, deposit, withdrawal, or transfer capability. Treat terminal/JSON output
-and the local monitor/watchlist state as sensitive financial data.
+All Sarwa requests are authenticated `GET` requests. The CLI and MCP server
+have no buy, sell, cancel, deposit, withdrawal, or transfer capability. The MCP
+server listens only on local stdio; it opens no network port. Configure it only
+in agents you trust, and treat terminal, JSON, MCP output, and local
+monitor/watchlist state as sensitive financial data.
 
 Run the local checks with:
 

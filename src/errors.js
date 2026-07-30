@@ -19,6 +19,20 @@ export function authError(message, code = "AUTH_REQUIRED") {
   });
 }
 
+export function cancellationError() {
+  return new SarwaError(
+    "CANCELLED",
+    "The operation was cancelled.",
+    { retryable: true },
+  );
+}
+
+export function throwIfAborted(signal) {
+  if (signal?.aborted) {
+    throw cancellationError();
+  }
+}
+
 export function schemaError(field, detail = "has an unexpected value") {
   return new SarwaError(
     "UPSTREAM_SCHEMA_CHANGED",

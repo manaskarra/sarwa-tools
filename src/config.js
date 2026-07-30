@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   chmod,
   mkdir,
@@ -11,6 +11,8 @@ import {
 } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+
+import { SarwaError } from "./errors.js";
 
 const SECURE_PROFILE_VERSION = 1;
 
@@ -43,6 +45,27 @@ export function configPaths(env = process.env) {
     profile: path.join(root, "browser-profile"),
     profileMarker: path.join(root, "secure-profile.json"),
     root,
+  };
+}
+
+export function accountMonitorConfigPaths(accountId, paths = configPaths()) {
+  const normalizedAccountId = String(accountId || "").trim();
+  if (!normalizedAccountId) {
+    throw new SarwaError(
+      "INTERNAL_ERROR",
+      "Monitor state requires a resolved Trade account ID.",
+      { retryable: false },
+    );
+  }
+  const accountKey = createHash("sha256")
+    .update(normalizedAccountId)
+    .digest("hex");
+  return {
+    ...paths,
+    monitorState: path.join(
+      paths.root,
+      `monitor-state-${accountKey}.json`,
+    ),
   };
 }
 

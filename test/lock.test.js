@@ -30,3 +30,23 @@ test("profile lock serializes concurrent browser users", async () => {
     await rm(directory, { force: true, recursive: true });
   }
 });
+
+test("profile lock waiting stops promptly when cancelled", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "sarwa-lock-abort-"));
+  const lockPath = path.join(directory, "browser.lock");
+  try {
+    const first = await acquireProfileLock(lockPath, { timeoutMs: 1_000 });
+    const controller = new AbortController();
+    const waiting = acquireProfileLock(lockPath, {
+      pollMs: 1_000,
+      signal: controller.signal,
+      timeoutMs: 10_000,
+    });
+
+    controller.abort();
+    await assert.rejects(waiting, { code: "CANCELLED" });
+    await first.release();
+  } finally {
+    await rm(directory, { force: true, recursive: true });
+  }
+});

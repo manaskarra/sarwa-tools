@@ -2,7 +2,11 @@ import { randomUUID } from "node:crypto";
 import { mkdir, open, readFile, unlink } from "node:fs/promises";
 import path from "node:path";
 
-import { SarwaError } from "./errors.js";
+import {
+  cancellationError,
+  SarwaError,
+  throwIfAborted,
+} from "./errors.js";
 
 const DEFAULT_TIMEOUT_MS = 60_000;
 const DEFAULT_POLL_MS = 150;
@@ -11,14 +15,17 @@ export async function acquireProfileLock(
   lockPath,
   {
     pollMs = DEFAULT_POLL_MS,
+    signal,
     timeoutMs = DEFAULT_TIMEOUT_MS,
   } = {},
 ) {
+  throwIfAborted(signal);
   await mkdir(path.dirname(lockPath), { mode: 0o700, recursive: true });
   const deadline = Date.now() + timeoutMs;
   const nonce = randomUUID();
 
   for (;;) {
+    throwIfAborted(signal);
     try {
       const handle = await open(lockPath, "wx", 0o600);
       try {
@@ -51,7 +58,7 @@ export async function acquireProfileLock(
         { retryable: true },
       );
     }
-    await delay(pollMs);
+    await delay(pollMs, signal);
   }
 }
 
@@ -104,6 +111,17 @@ async function releaseOwnedLock(lockPath, nonce) {
   }
 }
 
-function delay(milliseconds) {
-  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+function delay(milliseconds, signal) {
+  throwIfAborted(signal);
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, milliseconds);
+    const onAbort = () => {
+      clearTimeout(timeout);
+      reject(cancellationError());
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
 }
