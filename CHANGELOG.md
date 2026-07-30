@@ -16,7 +16,9 @@
 - Cancel active browser work when an MCP call or transport closes, serialize
   every tool operation, and validate transaction dates before reading data.
 - Advertise MCP output envelopes and isolate programmatic MCP imports behind
-  the `sarwa-cli/mcp` package subpath.
+  the `sarwa-tools/mcp` package subpath.
+- Rename the project, repository, and npm package to `sarwa-tools` while keeping
+  the `sarwa` and `sarwa-mcp` executable names stable.
 
 ## 1.0.1 - 2026-07-30
 

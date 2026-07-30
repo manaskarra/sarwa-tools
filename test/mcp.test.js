@@ -266,7 +266,7 @@ test("sarwa-mcp executable completes a real stdio handshake", async () => {
     stderr: "pipe",
   });
   const client = new Client({
-    name: "sarwa-cli-stdio-test",
+    name: "sarwa-tools-stdio-test",
     version: "1.0.0",
   });
   try {
@@ -286,7 +286,7 @@ async function connectInMemory(service) {
     InMemoryTransport.createLinkedPair();
   const instance = createSarwaMcpServer({ service });
   const client = new Client({
-    name: "sarwa-cli-test",
+    name: "sarwa-tools-test",
     version: "1.0.0",
   });
   await instance.server.connect(serverTransport);
