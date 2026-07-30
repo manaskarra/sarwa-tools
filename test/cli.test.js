@@ -42,7 +42,7 @@ test("public command surface stays focused on portfolio reads", () => {
 });
 
 test("local agent watchlist is manageable without Sarwa authentication", () => {
-  const directory = mkdtempSync(path.join(os.tmpdir(), "sarwa-cli-agent-"));
+  const directory = mkdtempSync(path.join(os.tmpdir(), "sarwa-tools-agent-"));
   const env = { ...process.env, SARWA_CONFIG_DIR: directory };
   try {
     const added = JSON.parse(
@@ -118,7 +118,7 @@ test("schemas are discoverable without authentication", () => {
 });
 
 test("local watchlist leaf schemas do not mutate state", () => {
-  const directory = mkdtempSync(path.join(os.tmpdir(), "sarwa-cli-schema-"));
+  const directory = mkdtempSync(path.join(os.tmpdir(), "sarwa-tools-schema-"));
   const env = { ...process.env, SARWA_CONFIG_DIR: directory };
   try {
     for (const args of [

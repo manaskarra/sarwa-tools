@@ -46,7 +46,7 @@ export function createSarwaMcpServer({
 } = {}) {
   const server = new McpServer(
     {
-      name: "sarwa-cli",
+      name: "sarwa-tools",
       version: VERSION,
     },
     {

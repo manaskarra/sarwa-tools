@@ -1,7 +1,7 @@
 {
-  "name": "sarwa-cli",
+  "name": "sarwa-tools",
   "version": "1.1.0",
-  "description": "Unofficial read-only, agent-ready portfolio CLI for Sarwa Odyssey.",
+  "description": "Unofficial read-only Sarwa CLI, MCP server, and Node API for humans, scripts, and AI agents.",
   "type": "module",
   "bin": {
     "sarwa": "bin/sarwa.js",
@@ -37,16 +37,19 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/manaskarra/sarwa-cli.git"
+    "url": "git+https://github.com/manaskarra/sarwa-tools.git"
   },
-  "homepage": "https://github.com/manaskarra/sarwa-cli#readme",
+  "homepage": "https://github.com/manaskarra/sarwa-tools#readme",
   "bugs": {
-    "url": "https://github.com/manaskarra/sarwa-cli/issues"
+    "url": "https://github.com/manaskarra/sarwa-tools/issues"
   },
   "keywords": [
     "sarwa",
     "portfolio",
     "cli",
+    "mcp",
+    "model-context-protocol",
+    "agents",
     "uae",
     "investing"
   ],

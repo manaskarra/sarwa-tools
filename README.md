@@ -1,6 +1,7 @@
-# Sarwa CLI
+# Sarwa Tools
 
-An unofficial, read-only portfolio CLI for [Sarwa Odyssey](https://www.sarwa.co/trade).
+An unofficial, read-only Sarwa CLI, MCP server, and Node API for humans,
+scripts, and AI agents using [Sarwa Odyssey](https://www.sarwa.co/trade).
 
 It is intentionally small: portfolio, holdings, transactions, curated market
 lists, and deterministic agent snapshots. There are no trading, funding,
@@ -14,7 +15,7 @@ raw-request, embedded LLM, or debug commands.
 Requires Node.js 22.12+ and Chrome, Edge, or Chromium.
 
 ```bash
-npm install -g sarwa-cli
+npm install -g sarwa-tools
 sarwa auth login
 ```
 
@@ -110,8 +111,8 @@ Each authenticated tool call owns and closes its browser session, so a
 long-running MCP host does not retain the browser-profile lock between calls.
 MCP calls are serialized inside the server to keep local profile and monitor
 state deterministic. Programmatic Node consumers can import MCP construction
-from `sarwa-cli/mcp`; the default `sarwa-cli` export remains independent of the
-MCP SDK.
+from `sarwa-tools/mcp`; the default `sarwa-tools` export remains independent
+of the MCP SDK.
 
 ## Agent output
 
