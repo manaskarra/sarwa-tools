@@ -397,7 +397,7 @@ export async function login({ timeoutSeconds = 600 } = {}) {
     await session.page.waitForTimeout(500);
     return {
       authenticated: true,
-      migrated_to_os_credential_store: true,
+      browser_profile_saved: true,
     };
   } finally {
     await session.close();

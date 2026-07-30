@@ -1,12 +1,23 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 const bin = fileURLToPath(new URL("../bin/sarwa.js", import.meta.url));
+
+test("CLI release version matches the package version", () => {
+  const packageMetadata = JSON.parse(
+    readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+  );
+  const cliVersion = execFileSync(process.execPath, [bin, "--version"], {
+    encoding: "utf8",
+  }).trim();
+
+  assert.equal(cliVersion, packageMetadata.version);
+});
 
 test("public command surface stays focused on portfolio reads", () => {
   const help = execFileSync(process.execPath, [bin, "--help"], {

@@ -101,6 +101,31 @@ Then configure an MCP host to launch `sarwa-mcp`:
 }
 ```
 
+### Headless Linux and VPS hosts
+
+`sarwa auth login` intentionally opens a visible browser so the user completes
+Sarwa sign-in and MFA directly. On a headless server, perform this one-time step
+through a temporary trusted VNC or X11 session as the same unprivileged Unix user
+that will run the MCP host. Login is not exposed as an MCP tool.
+
+Before logging in, configure a working Secret Service/Libsecret or KWallet
+session for that user. [Chromium can fall back][chromium-password-storage] to
+its unencrypted `basic` password store when no OS credential store is available.
+Close the temporary graphical session after login, then verify both
+authentication and session persistence:
+
+```bash
+sarwa auth status --json
+sarwa snapshot --json
+# Reboot the host, then run both commands again.
+```
+
+For a service-managed MCP host, use absolute paths for Node and
+`bin/sarwa-mcp.js`, set `SARWA_CONFIG_DIR` explicitly, and keep the configuration
+directory private. Do not run the browser or MCP server as root.
+
+[chromium-password-storage]: https://chromium.googlesource.com/chromium/src/+/master/docs/linux/password_storage.md
+
 The server exposes tools for authentication status, accounts, portfolio,
 holdings, holding detail, transactions, Sarwa-curated market lists, the private
 agent watchlist, snapshots, monitor checks, and an explicit destructive monitor

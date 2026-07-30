@@ -70,7 +70,9 @@ export function handleCliError(error, argv = process.argv) {
 function createProgram() {
   const program = new Command()
     .name("sarwa")
-    .description("Unofficial read-only Sarwa portfolio CLI and Node API.")
+    .description(
+      "Unofficial read-only Sarwa CLI, MCP server, and Node API.",
+    )
     .version(VERSION)
     .option("--json", "force formatted JSON output")
     .option("--compact", "print one-line JSON")
@@ -253,7 +255,7 @@ async function showAuthLogin(options, command) {
     printStructured(document, command);
     return;
   }
-  process.stdout.write("Sarwa session saved with OS-backed browser security.\n");
+  process.stdout.write("Sarwa session saved in the private browser profile.\n");
 }
 
 async function showAuthStatus(_options, command) {
