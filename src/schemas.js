@@ -133,6 +133,7 @@ const RESOURCE_SCHEMAS = Object.freeze({
       "observed_at",
       "portfolio_delta",
       "reset",
+      "stale_observation",
       "state_updated",
     ],
     properties: {
@@ -144,6 +145,7 @@ const RESOURCE_SCHEMAS = Object.freeze({
       observed_at: { type: "string", format: "date-time" },
       portfolio_delta: { type: "object" },
       reset: { type: "boolean" },
+      stale_observation: { type: "boolean" },
       state_updated: { type: "boolean" },
     },
   },

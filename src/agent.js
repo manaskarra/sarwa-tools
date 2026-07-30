@@ -45,7 +45,7 @@ export function attachAgentWatchlist(snapshotDocument, watchlistItems) {
   const items = watchlistItems.map((item) => {
     const holding =
       holdings.find((candidate) =>
-        symbolsMatch(candidate.symbol, item.symbol),
+        symbolsMatch(candidate, item.symbol),
       ) || null;
     return {
       ...item,
@@ -64,7 +64,12 @@ export function attachAgentWatchlist(snapshotDocument, watchlistItems) {
 
 export function buildMonitorState(snapshotDocument, capturedAt) {
   const snapshot = snapshotDocument?.snapshot;
-  if (!snapshot || typeof snapshot !== "object") {
+  if (
+    !snapshot ||
+    typeof snapshot !== "object" ||
+    !validAgentTimestamp(capturedAt) ||
+    !validAgentTimestamp(snapshotDocument.fetched_at)
+  ) {
     throw new SarwaError(
       "INTERNAL_ERROR",
       "Monitor requires a valid agent snapshot.",
@@ -74,12 +79,14 @@ export function buildMonitorState(snapshotDocument, capturedAt) {
   return {
     storage_version: 1,
     captured_at: capturedAt,
+    observed_at: snapshotDocument.fetched_at,
     portfolio: {
       cash: snapshot.portfolio?.cash ?? null,
       total_pnl: snapshot.portfolio?.total_pnl ?? null,
       value: snapshot.portfolio?.value ?? null,
     },
     holdings: (snapshot.holdings || []).map((holding) => ({
+      asset_class: holding.asset_class ?? null,
       quantity: holding.quantity,
       symbol: normalizeAgentSymbol(holding.symbol),
     })),
@@ -95,28 +102,30 @@ export function buildMonitorState(snapshotDocument, capturedAt) {
 export function diffMonitorStates(previous, current, snapshotDocument) {
   const snapshot = snapshotDocument.snapshot;
   const events = [];
+  const occurrenceKey = current.observed_at || current.captured_at;
+  const addEvent = (type, payload) => {
+    events.push(event(type, payload, occurrenceKey));
+  };
   const previousHoldings = keyedHoldings(previous.holdings);
   const currentHoldings = keyedHoldings(current.holdings);
 
   for (const [key, holding] of currentHoldings) {
     const before = previousHoldings.get(key);
     if (!before) {
-      events.push(event("position_opened", { holding }));
+      addEvent("position_opened", { holding });
       continue;
     }
     if (Math.abs(Number(holding.quantity) - Number(before.quantity)) > QUANTITY_EPSILON) {
-      events.push(
-        event("position_quantity_changed", {
-          after_quantity: holding.quantity,
-          before_quantity: before.quantity,
-          symbol: holding.symbol,
-        }),
-      );
+      addEvent("position_quantity_changed", {
+        after_quantity: holding.quantity,
+        before_quantity: before.quantity,
+        symbol: holding.symbol,
+      });
     }
   }
   for (const [key, holding] of previousHoldings) {
     if (!currentHoldings.has(key)) {
-      events.push(event("position_closed", { holding }));
+      addEvent("position_closed", { holding });
     }
   }
 
@@ -131,29 +140,27 @@ export function diffMonitorStates(previous, current, snapshotDocument) {
     if (occurrence <= (previousTransactions.get(fingerprint) || 0)) {
       continue;
     }
-    events.push(
-      event("transaction_added", {
-        fingerprint,
-        occurrence,
-        transaction,
-      }),
-    );
+    addEvent("transaction_added", {
+      fingerprint,
+      occurrence,
+      transaction,
+    });
   }
 
   const previousWatchlist = new Set(
-    previous.watchlist_symbols.map(instrumentKey),
+    previous.watchlist_symbols.map(localSymbolKey),
   );
   const currentWatchlist = new Set(
-    current.watchlist_symbols.map(instrumentKey),
+    current.watchlist_symbols.map(localSymbolKey),
   );
   for (const symbol of current.watchlist_symbols) {
-    if (!previousWatchlist.has(instrumentKey(symbol))) {
-      events.push(event("watchlist_added", { symbol }));
+    if (!previousWatchlist.has(localSymbolKey(symbol))) {
+      addEvent("watchlist_added", { symbol });
     }
   }
   for (const symbol of previous.watchlist_symbols) {
-    if (!currentWatchlist.has(instrumentKey(symbol))) {
-      events.push(event("watchlist_removed", { symbol }));
+    if (!currentWatchlist.has(localSymbolKey(symbol))) {
+      addEvent("watchlist_removed", { symbol });
     }
   }
 
@@ -187,7 +194,7 @@ export function transactionFingerprint(transaction) {
 
 function keyedHoldings(holdings) {
   return new Map(
-    holdings.map((holding) => [instrumentKey(holding.symbol), holding]),
+    holdings.map((holding) => [holdingKey(holding), holding]),
   );
 }
 
@@ -199,25 +206,65 @@ function occurrenceCounts(values) {
   return counts;
 }
 
-function symbolsMatch(left, right) {
-  const leftAliases = instrumentAliases(left);
-  return instrumentAliases(right).some((alias) => leftAliases.includes(alias));
+function symbolsMatch(holding, watchlistSymbol) {
+  const holdingAliases = holdingSymbolAliases(holding);
+  return watchlistSymbolAliases(watchlistSymbol).some((alias) =>
+    holdingAliases.has(alias),
+  );
 }
 
-function instrumentAliases(value) {
-  const compact = instrumentKey(value);
-  const aliases = [compact];
-  if (compact.endsWith("USD") && compact.length > 3) {
-    aliases.push(compact.slice(0, -3));
+function holdingSymbolAliases(holding) {
+  const symbol = localSymbolKey(holding?.symbol);
+  const aliases = new Set([symbol]);
+  const slashQuoted = canonicalSlashUsdPair(symbol);
+  if (slashQuoted) {
+    aliases.add(slashQuoted);
+    aliases.add(slashQuoted.slice(0, -3));
+  }
+  if (holding?.asset_class === "crypto") {
+    const canonical = canonicalCryptoUsdPair(symbol);
+    if (canonical) {
+      aliases.add(canonical);
+      aliases.add(canonical.slice(0, -3));
+    }
   }
   return aliases;
 }
 
-function instrumentKey(value) {
-  return String(value || "")
-    .trim()
-    .toUpperCase()
-    .replace(/[./_-]/g, "");
+function watchlistSymbolAliases(value) {
+  const symbol = localSymbolKey(value);
+  const aliases = [symbol];
+  const slashQuoted = canonicalSlashUsdPair(symbol);
+  if (slashQuoted) {
+    aliases.push(slashQuoted);
+  }
+  return aliases;
+}
+
+function holdingKey(holding) {
+  const symbol = localSymbolKey(holding?.symbol);
+  if (holding?.asset_class === "crypto") {
+    return canonicalCryptoUsdPair(symbol) || symbol;
+  }
+  return canonicalSlashUsdPair(symbol) || symbol;
+}
+
+function localSymbolKey(value) {
+  return String(value || "").trim().toUpperCase();
+}
+
+function canonicalSlashUsdPair(symbol) {
+  const match = symbol.match(/^(.+)\/USD$/);
+  return match ? `${match[1]}USD` : null;
+}
+
+function canonicalCryptoUsdPair(symbol) {
+  const match = symbol.match(/^(.+?)[./_-]?USD$/);
+  return match && match[1] ? `${match[1]}USD` : null;
+}
+
+function validAgentTimestamp(value) {
+  return typeof value === "string" && !Number.isNaN(Date.parse(value));
 }
 
 function numericDelta(current, previous) {
@@ -232,10 +279,10 @@ function numericDelta(current, previous) {
   return current - previous;
 }
 
-function event(type, payload) {
+function event(type, payload, occurrenceKey) {
   return {
     event_id: createHash("sha256")
-      .update(`${type}:${JSON.stringify(payload)}`)
+      .update(`${occurrenceKey}:${type}:${JSON.stringify(payload)}`)
       .digest("hex")
       .slice(0, 24),
     type,

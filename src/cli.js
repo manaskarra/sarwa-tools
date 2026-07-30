@@ -496,7 +496,9 @@ async function showMonitor(options, command) {
   const warnings = [...snapshotDocument.warnings];
   if (!result.state_updated) {
     warnings.push(
-      "Monitor baseline was not updated because the Sarwa snapshot was partial.",
+      result.stale_observation
+        ? "Monitor baseline was not updated because the same or a newer observation is already stored."
+        : "Monitor baseline was not updated because the Sarwa snapshot was partial.",
     );
   }
   const snapshot = snapshotDocument.snapshot;
@@ -553,11 +555,12 @@ async function withClient(callback) {
 }
 
 function maybePrintSchema(options, command, resource) {
-  if (!options?.schema) {
+  const resolvedOptions = command.optsWithGlobals();
+  if (!options?.schema && !resolvedOptions.schema) {
     return false;
   }
   printJson(schemaDocument(resource), {
-    compact: command.optsWithGlobals().compact,
+    compact: resolvedOptions.compact,
   });
   return true;
 }
@@ -710,6 +713,8 @@ function printMonitor(monitor) {
   let status = monitor.changed ? "changes detected" : "no changes";
   if (monitor.reset) {
     status = "baseline reset";
+  } else if (monitor.stale_observation) {
+    status = "stale observation ignored";
   } else if (!monitor.baseline_at) {
     status = "snapshot incomplete; baseline not created";
   } else if (
