@@ -117,6 +117,37 @@ test("schemas are discoverable without authentication", () => {
   }
 });
 
+test("local watchlist leaf schemas do not mutate state", () => {
+  const directory = mkdtempSync(path.join(os.tmpdir(), "sarwa-cli-schema-"));
+  const env = { ...process.env, SARWA_CONFIG_DIR: directory };
+  try {
+    for (const args of [
+      ["watchlist", "list", "--schema"],
+      ["watchlist", "add", "EXM", "--schema"],
+      ["watchlist", "remove", "EXM", "--schema"],
+    ]) {
+      const schema = JSON.parse(
+        execFileSync(process.execPath, [bin, "--compact", ...args], {
+          encoding: "utf8",
+          env,
+        }),
+      );
+      assert.equal(schema.resource, "agent_watchlist");
+    }
+
+    const listed = JSON.parse(
+      execFileSync(
+        process.execPath,
+        [bin, "--compact", "watchlist", "list"],
+        { encoding: "utf8", env },
+      ),
+    );
+    assert.deepEqual(listed.agent_watchlist.items, []);
+  } finally {
+    rmSync(directory, { force: true, recursive: true });
+  }
+});
+
 test("agent errors are structured, stable, and free of terminal controls", () => {
   const result = spawnSync(
     process.execPath,

@@ -115,13 +115,32 @@ export async function runMonitorCheck(
 
     if (incomplete) {
       return {
-        baseline_at: previous?.captured_at || null,
+        baseline_at: previous ? monitorObservationAt(previous) : null,
         changed: false,
         events: [],
         initialized: Boolean(previous),
-        observed_at: capturedAt,
+        observed_at: current.observed_at,
         portfolio_delta: emptyPortfolioDelta(),
         reset: false,
+        stale_observation: false,
+        state_updated: false,
+      };
+    }
+
+    if (
+      previous &&
+      Date.parse(current.observed_at) <=
+        Date.parse(monitorObservationAt(previous))
+    ) {
+      return {
+        baseline_at: monitorObservationAt(previous),
+        changed: false,
+        events: [],
+        initialized: true,
+        observed_at: current.observed_at,
+        portfolio_delta: emptyPortfolioDelta(),
+        reset: false,
+        stale_observation: true,
         state_updated: false,
       };
     }
@@ -129,13 +148,14 @@ export async function runMonitorCheck(
     if (!previous || reset) {
       await writePrivateJsonAtomic(paths.monitorState, current);
       return {
-        baseline_at: capturedAt,
+        baseline_at: current.observed_at,
         changed: false,
         events: [],
         initialized: true,
-        observed_at: capturedAt,
+        observed_at: current.observed_at,
         portfolio_delta: emptyPortfolioDelta(),
         reset: Boolean(reset),
+        stale_observation: false,
         state_updated: true,
       };
     }
@@ -147,13 +167,14 @@ export async function runMonitorCheck(
     );
     await writePrivateJsonAtomic(paths.monitorState, current);
     return {
-      baseline_at: previous.captured_at,
+      baseline_at: monitorObservationAt(previous),
       changed: comparison.changed,
       events: comparison.events,
       initialized: true,
-      observed_at: capturedAt,
+      observed_at: current.observed_at,
       portfolio_delta: comparison.portfolio_delta,
       reset: false,
+      stale_observation: false,
       state_updated: true,
     };
   });
@@ -226,6 +247,9 @@ function validateMonitorState(state) {
     state?.storage_version !== STORAGE_VERSION ||
     typeof state.captured_at !== "string" ||
     !validTimestamp(state.captured_at) ||
+    (state.observed_at !== undefined &&
+      (typeof state.observed_at !== "string" ||
+        !validTimestamp(state.observed_at))) ||
     !validPortfolio(state.portfolio) ||
     !Array.isArray(state.holdings) ||
     state.holdings.some(
@@ -233,6 +257,9 @@ function validateMonitorState(state) {
         !holding ||
         typeof holding !== "object" ||
         !isNormalizedSymbol(holding.symbol) ||
+        (holding.asset_class !== undefined &&
+          holding.asset_class !== null &&
+          typeof holding.asset_class !== "string") ||
         typeof holding.quantity !== "number" ||
         !Number.isFinite(holding.quantity),
     ) ||
@@ -278,6 +305,10 @@ function validPortfolio(portfolio) {
 
 function validTimestamp(value) {
   return !Number.isNaN(Date.parse(value));
+}
+
+function monitorObservationAt(state) {
+  return state.observed_at || state.captured_at;
 }
 
 function invalidState(label) {

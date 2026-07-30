@@ -120,6 +120,12 @@ positions, quantity changes, new transactions, and local watchlist additions or
 removals. Portfolio value, P&L, and cash changes are included as numeric deltas
 without creating noisy events.
 
+Each event ID is scoped to the observation that produced it, so repeated real
+transitions remain distinct while replaying the same observation remains
+idempotent. If overlapping monitor runs finish out of order, an older
+or duplicate observation is reported as stale and cannot replace the newer
+baseline.
+
 The first complete run creates a baseline and intentionally emits no historical
 events. A partial or incomplete Sarwa read never advances that baseline. Use
 `sarwa monitor --reset` to deliberately replace it without emitting events.
