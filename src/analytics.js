@@ -226,8 +226,8 @@ export function buildDeepDive({
         order.commission,
         `matchingOrders[${index}].commission`,
       ),
-      date: normalizeDate(
-        order.filled_at ?? order.submitted_at ?? order.created_at,
+      date: normalizeFirstDate(
+        [order.filled_at, order.submitted_at, order.created_at],
         `matchingOrders[${index}].date`,
       ),
       notional: optionalNumber(
@@ -333,8 +333,8 @@ export function buildTransactions(transactionsResponse) {
           `transactions.data[${index}].amount`,
         ),
         asset_class: optionalString(transaction.asset_class),
-        date: normalizeDate(
-          transaction.created_at ?? transaction.date,
+        date: normalizeFirstDate(
+          [transaction.created_at, transaction.date],
           `transactions.data[${index}].date`,
         ),
         price: optionalNumber(
@@ -412,7 +412,20 @@ export function normalizeDate(value, field = "date") {
   if (Number.isNaN(date.getTime())) {
     throw schemaError(field, "must be a valid date");
   }
+  if (date.getUTCFullYear() <= 1) {
+    return null;
+  }
   return date.toISOString();
+}
+
+function normalizeFirstDate(values, field) {
+  for (const value of values) {
+    const normalized = normalizeDate(value, field);
+    if (normalized !== null) {
+      return normalized;
+    }
+  }
+  return null;
 }
 
 function attributes(item, field) {

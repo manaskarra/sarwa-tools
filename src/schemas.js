@@ -78,6 +78,17 @@ const RESOURCE_SCHEMAS = Object.freeze({
     items: {
       type: "object",
       required: ["date", "type", "symbol", "amount"],
+      properties: {
+        date: { type: ["string", "null"], format: "date-time" },
+        type: { type: ["string", "null"] },
+        symbol: { type: ["string", "null"] },
+        side: { type: ["string", "null"] },
+        quantity: { type: ["number", "null"] },
+        price: { type: ["number", "null"] },
+        amount: { type: ["number", "null"] },
+        status: { type: ["string", "null"] },
+        asset_class: { type: ["string", "null"] },
+      },
     },
   },
   watchlist: {
