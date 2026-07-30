@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 1.1.1 - 2026-07-30
+
+- Treat Sarwa's year-one transaction timestamp as a missing date and fall back
+  to another valid upstream timestamp when available.
+- Describe nullable transaction dates explicitly in the agent/MCP schema.
+
 ## 1.1.0 - 2026-07-30
 
 - Add a local stdio MCP server with validated tools for authentication status,

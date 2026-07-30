@@ -314,6 +314,29 @@ test("nested monetary values and Unix timestamps are normalized exactly", () => 
   assert.equal(transaction.date, "2025-10-30T12:50:10.747Z");
 });
 
+test("upstream zero-date sentinels are missing dates, not year-one activity", () => {
+  const transactions = buildTransactions({
+    data: [
+      {
+        activity_type: "DIV",
+        amount: 7.23,
+        created_at: "0001-01-01T00:00:00.000Z",
+        date: "2026-07-29T00:00:00Z",
+        symbol: "QQQM",
+      },
+      {
+        activity_type: "DIV",
+        amount: 5.57,
+        created_at: "0001-01-01T00:00:00.000Z",
+        symbol: "VXUS",
+      },
+    ],
+  });
+
+  assert.equal(transactions[0].date, "2026-07-29T00:00:00.000Z");
+  assert.equal(transactions[1].date, null);
+});
+
 test("incomplete order history never reports a complete spend total", () => {
   const overview = buildOverview({
     ordersComplete: false,
