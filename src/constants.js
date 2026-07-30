@@ -1,6 +1,6 @@
 export const SARWA_WEB_URL = "https://www.sarwa.co/trade";
 export const SARWA_API_ORIGIN = "https://apiv2.sarwa.co";
-export const VERSION = "1.1.0";
+export const VERSION = "1.1.1";
 export const OUTPUT_SCHEMA_VERSION = "1.0";
 
 export const READ_ENDPOINTS = Object.freeze({

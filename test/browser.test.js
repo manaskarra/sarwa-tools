@@ -37,7 +37,7 @@ test("non-Sarwa and malformed authorization responses are ignored", () => {
   assert.equal(session.authHeader, null);
 });
 
-test("authenticated browser launch is sandboxed and uses the OS credential store", () => {
+test("authenticated browser launch is sandboxed and requests the OS credential store", () => {
   const options = browserLaunchOptions({
     executablePath: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
     headless: true,

@@ -7,6 +7,9 @@
 - Treat Sarwa's year-one transaction timestamp as a missing date and fall back
   to another valid upstream timestamp when available.
 - Describe nullable transaction dates explicitly in the agent/MCP schema.
+- Keep the CLI and MCP release identity aligned with the npm package version.
+- Describe the interactive login and credential-store requirements for
+  headless Linux and VPS deployments without overclaiming the storage backend.
 
 ## 1.1.0 - 2026-07-30
 
