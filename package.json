@@ -1,7 +1,7 @@
 {
   "name": "sarwa-cli",
   "version": "1.0.0",
-  "description": "Unofficial read-only portfolio CLI for Sarwa Odyssey.",
+  "description": "Unofficial read-only, agent-ready portfolio CLI for Sarwa Odyssey.",
   "type": "module",
   "bin": {
     "sarwa": "bin/sarwa.js"

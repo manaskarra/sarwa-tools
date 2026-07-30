@@ -88,4 +88,10 @@ test("managed-browser and launch-timeout failures are actionable", () => {
   );
   assert.equal(timeout.code, "BROWSER_LAUNCH_TIMEOUT");
   assert.equal(timeout.retryable, true);
+
+  const busy = normalizeBrowserLaunchError(
+    new Error("Failed to create a ProcessSingleton for the profile directory"),
+  );
+  assert.equal(busy.code, "PROFILE_BUSY");
+  assert.equal(busy.retryable, true);
 });

@@ -4,6 +4,21 @@ export {
   logout,
   SarwaBrowserSession,
 } from "./browser.js";
+export {
+  addAgentWatchlistItem,
+  listAgentWatchlist,
+  readMonitorState,
+  removeAgentWatchlistItem,
+  runMonitorCheck,
+} from "./agent-store.js";
+export {
+  attachAgentWatchlist,
+  buildMonitorState,
+  diffMonitorStates,
+  normalizeAgentSymbol,
+  normalizeWatchlistNote,
+  transactionFingerprint,
+} from "./agent.js";
 export { SarwaClient } from "./client.js";
 export {
   OUTPUT_SCHEMA_VERSION,
